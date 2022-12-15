@@ -1,0 +1,207 @@
+---
+title: "NBA Project"
+author: "James LoVerde"
+date: "2022-12-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(scales)
+library(modelr)
+library(dplyr)
+source("../scripts/viridis.R")
+source("../scripts/ggprob.R")
+library("readxl")
+```
+
+**Introduction**
+
+> Have you ever wondered how basketball has changed over the years? My favorite sport being basketball, I decided to learn for ourselves using my data analytic skills. The way basketball is played continues to change, and there has been a lot of talk about “position less basketball” which refers to the concept that every position has a complete skill set. It is widely accepted that guards and shorter players have skills based around high level passing, dribbling, shooting, and finesse. Conversely, centers and forwards have a skill set tailored around post scoring, rim protection, and strength. In this project I aim to answer the question: has basketball deviated from the typical position structure in the last 25 years? There are several aspects of the game,such as three point shooting, offensive ratings, and defensive ratings, that provide evidence of major changes to the structure of how basketball is played. The new modern era is welcoming the "Big Man Era" where the Power forwards and Centers are the most valuable position on the court on both offense and defense. 
+
+**Background**
+
+> The entire dataset includes history data for each player in each team, including their name, position, team, and a variety of game statistics. The dataset contains data from 1997-98 season through 2021-22 season. I am using part of the dataset columns to conduct our analysis. The raw data set includes over 14,573 rows and 31 columns. Now, I have removed some columns from this dataset that were not useful to our analysis. The data was accessed from data world. For people who do not follow the NBA, here are some abbreviations that are used within our code and throughout the project to help you better understand the analysis. 
+[MP - Minutes Played Per Game, PTS - Points, FG% - Field Goal Percentage, 3P% - 3 Point Percentage, ORB - Offensive Rebounds, DRB - Defensive Rebounds, STL - Steals, BLK - Blocks, TOV - Turnovers, PF - Personal Fouls] 
+
+> An unusual factor that I could not implement into our data is the percentage players were contensting shots on defense, which would change our defense efficency formula. I intend to use these various game statitics to provide evidence on how the game of basketball has changed over the year with big men (power forwards and centers) becoming the focal point of NBA teams on defense and offensive in the modern ERA. 
+
+> Our second dataset was also found on the data world site, which includes NBA Finals and MVPS data. This is talked about in the discussion for potential new questions. The data, however, was a little outdated so I updated the last couple of years myself with data from our third source. 
+
+**Data Citation** 
+
+> Malherbe, Tristan. “NBA Finals and MVPs - Dataset by Datatouille." Data.world, 31 Oct. 2018, https://data.world/datatouille/nba-finals-and-mvps.
+
+> Tocco, Eduardo. “NBA Player Stats - Dataset by Etocco.” Data.world, 26 May 2022, https://data.world/etocco/nba-player-stats. 
+
+> NBA. “NBA Most Valuable Player - NBA Awards.” RealGM, 2022, https://basketball.realgm.com/nba/awards/by-type/Most-Valuable-Player/1.
+
+```{r, echo=FALSE}
+#Read in Original Data
+nba_stats = read_csv("../data/NBA_Player_Stats.csv", show_col_types = FALSE)
+nba_mvp = read_excel("../data/NBA_MVP.xlsx")
+# Clean the Data
+nba_stats = nba_stats %>% 
+  filter(!str_detect(Pos, "-")) # Deletes any player that played multiple positions
+nba_mvp = nba_mvp %>% 
+  select('MVP Name', 'MVP Height (m)', 'MVP Height (ft)', 'MVP Position', 'Year') 
+skip6_nba_mvp <- nba_mvp[-(1:6),] 
+```
+
+**Cleaning**
+
+>To start off, I needed to clean the data as some players played multiple positions through different seasons (or even the same season). I ignored any players that played multiple positions as they are not representative of one specific position and as these players only shoId up on a low percentages of seasons throughout the years. For the MVP dataset, I selected the only columns I will be using in this project. Along with skipping the first 6 rows because it was filled with "N/A" and removing the spaces in the column names. 
+
+
+```{r, echo=FALSE}
+#Summary of Offensive Efficiency
+options(dplyr.summarise.inform = FALSE)
+
+Offensive = nba_stats %>% 
+  group_by(Pos,Year) %>% 
+  summarize(offensive_efficiency = ( ((PTS * `eFG%`) + (ORB+AST) - TOV)) / MP) %>% 
+  drop_na() %>% 
+  summarize(offensive_efficiency_yearly = mean(offensive_efficiency)) 
+
+Offensive
+
+```
+
+> The offensive efficiency was calculated using the equation: ((Points * Effective Field Goal Percentage) + (Offensive Rebounds + Assists) - Turnover) / Minutes Played) then calculating the mean value by position and year. This was the best way given with the statistics I had to measure a player's impact in the game depending on how long he was on the court.  
+
+```{r, fig.height= 7, echo=FALSE}
+ggplot(Offensive, aes(x = Pos , y = offensive_efficiency_yearly, color = Pos , fill = Pos)) +
+  geom_col() + xlab("Position") + ylab("Average Offensive Efficiency") + facet_wrap(vars(Year)) + ggtitle("Average Offensive Efficiency Per Position in the NBA", "1997-2022 Seasons") 
+```
+
+> The graphs indicate a general rise in the offensive efficiency of every position, which makes sense because NBA games now have much higher scoring totals then they did 25 years ago. Additionally, it is clear that centers have become much greater offensive threats since 1997 almost doubling in offensive efficiency. The center position has surpassed the point guard position in offense efficiency in today's era, which would be unthinkable 25 years ago. Along with power forwards, who have had a substantial increase in offensive efficiency. Emphasized by this graph, big men are slowly becoming increasingly more important and dominate in the offense game. 
+
+
+```{r, echo=FALSE}
+#Center and Power Forward 3 Point Percentage
+bigs_3p = nba_stats %>% 
+  rename(threepointpercentage = `3P%`) %>% 
+  filter(Pos == 'C'| Pos == 'PF') %>% 
+  group_by(Year) %>% 
+  select(Pos, Year, threepointpercentage) %>% 
+  drop_na() %>% 
+  summarize(Year = as.numeric(substr(Year, 1, 4)), Big_3Point = mean(threepointpercentage), Pos) 
+
+bigs_3p 
+```
+```{r, echo=FALSE, message = FALSE}
+ggplot(bigs_3p, aes(x = Year, y = Big_3Point)) + 
+  geom_point() + geom_smooth(se = FALSE) + ylab("Average 3 Point Percentage") + xlab("Year(Starting Year)") + ggtitle("Average 3 Point FG% for Big Men Over the Last 25 Years", subtitle = "(Power Forwards and Centers)")
+```
+
+> This extreme rise in the efficiency of shooting, especially the three point shot, correlates directly to the offensive efficiency trends among positions. It is no coincidence that big men (especially centers) took over the offensive efficiency charts. This drastic increase in shooting completely contradicts the traditional role big men are supposed to play. Centers and power forwards have learned to adapt in the modern NBA Era by developing a jumpshot to allow them to shoot the ball efficiently. Centers and power forwards who range from the 6'8 to 7'3, who now have adapted the ability to shoot the deep ball have almost become an unstoppable force for defenses to stop. It has only gotten harder on defenses in recent years to stop these big men from making their three point shots as exhibited by the graph.
+
+
+```{r, echo=FALSE}
+#Summary of Defensive Efficiency
+Defensive = nba_stats%>%
+  drop_na()%>%
+  group_by(Pos, Year) %>% 
+  mutate(defensive_efficiency = (STL+BLK+DRB-PF)/MP)%>%
+  summarize(defensive_efficiency_yearly = mean(defensive_efficiency))
+Defensive
+
+```
+
+> The defensive efficiency was calculated using the equation : ((Defensive Rebounds + Steals + Blocks) - Personal Fouls)/ Minutes Played) and then calculating the mean value by position and year.  
+
+```{r,fig.height = 7, echo=FALSE}
+ggplot(Defensive, aes(x = Pos , y = defensive_efficiency_yearly, color = Pos , fill = Pos)) +
+  geom_col() + xlab("Position") + ylab("Average Defensive Efficiency") + ggtitle("Average Defensie Efficiency Per Position in the NBA", "1997-2022 Seasons") + facet_wrap(vars(Year)) 
+```
+
+> This graph is another indicator on how center and power forwards have always been key components in the defensive game. The big men dominate in defense efficiency as they are crucial protectors of the paint (space under the basket) to block and help contest any driving attempts or mid length shots. Once again, centers take a significant leap in the efficency rating, while power forwards have created a larger superior defensive efficiency gap over the guard and small forward positions in recent years. Shown on this graph the rise of the big men and the stability of guards and forwards shows how the transition into the Big Man league is inevitable. 
+
+```{r, echo=FALSE}
+# Linear Regression Summary of Center's Defensive Efficiency Linear Regression Model
+
+nba1 = Defensive%>%
+  filter(Pos == "C") %>% 
+  mutate(Year = as.numeric(substr(Year, 1, 4)))
+
+dem = nba1%>%
+  pull(defensive_efficiency_yearly)
+yr = nba1%>%
+  pull(Year)
+
+lm = lm(defensive_efficiency_yearly ~ Year, data = nba1)
+df = nba1 %>%
+  add_residuals(lm) %>%
+  add_predictions(lm)
+df1 = df%>%
+  summarize(mean = mean(resid), sd = sd(resid))
+
+```
+
+```{r, echo=FALSE, message = FALSE}
+ggplot(df, aes(Year, defensive_efficiency_yearly)) +
+  geom_point() +
+  ylab("Average Defensive Efficiency of a Center") + 
+  xlab("Year") +
+  ggtitle("Center's Defensive Efficiency Linear Regression Model") +
+  geom_smooth(se=FALSE) +
+  geom_smooth(method="lm", se = FALSE, color="magenta")
+```
+
+
+```{r, echo=FALSE}
+# Linear Regression Summary of Center's Offensive Efficiency Linear Regression Model
+nba2 = Offensive%>%
+  filter(Pos == "C") %>% 
+  mutate(Year = as.numeric(substr(Year, 1, 4)))
+
+dem2 = nba2%>%
+  pull(offensive_efficiency_yearly)
+yr2 = nba2%>%
+  pull(Year)
+
+lm2 = lm(offensive_efficiency_yearly ~ Year, nba2)
+df2 = nba2 %>%
+  add_residuals(lm2) %>%
+  add_predictions(lm2)
+df3 = df%>%
+  summarize(mean = mean(resid), sd = sd(resid))
+```
+
+```{r, echo=FALSE, message = FALSE}
+ggplot(df2, aes(Year, offensive_efficiency_yearly)) +
+  geom_point() +
+  ylab("Average Offensive Efficiency of a Center") + 
+  xlab("Year") +
+  ggtitle("Center's Offensive Efficiency Linear Regression Model") +
+  geom_smooth(se=FALSE) +
+  geom_smooth(method="lm", se = FALSE, color="magenta")
+```
+
+> These two graphs proves our thesis on how centers are going to continue to become more dominiate in the future NBA ERA. As their defense and offensive efficiceny continue to exponential grow according to our linear regression model that shows a straight linear regression line that will exponential grow into the future. Especially on offense where centers are rapidly increasing their efficiency. ALl statistical evidence points to the NBA turning into a "big man" league where they control the floor on both sides of the game. 
+
+```{r, echo = FALSE}
+# Printing the Summary Tables
+mytable1 <- summary(lm) # Summary table of Center's Offensive Efficiency Linear Regression Model
+mytable <- summary(lm2) # Summary table of Center's Defensive Efficiency Linear Regression Model
+conf_intslm2 <- confint(lm2)
+conf_intslm1 <- confint(lm)
+print(mytable)
+print(mytable1)
+
+
+
+```
+
+> As seen from this summary table of the 'Center's Offensive Efficiency Linear Regression Model' and the 'Defensive's Offensive Efficiency Linear Regression Model' (the summary on top being the offensive), the coefficient of 0.006425 (listed under estimate and across from 'Year') for the years predictor variable of the offensive table tells us a lot about the predicted future for the NBA. This indicates that, on average, a center's offensive efficiency is expected to increaese by 0.006 every year. Furthermore, the extremely small p-value of  6.833e-09, which is (0.000000006833), suggets that this relationship is likely to be statistically significant. Therefore, the coefficient is likely to be an important predictor of a center's offensive efficiency. The summary table for the 'Defensive's Offensive Efficiency Linear Regression Model' is similar to the offensive as it contains a coefficent of 0.0027543 and another small pvalue of 0.0000002982 making the coefficient likely to be statistically significant. These two tables provide us with statistical evidence that both the center's offensive and defensive efficiency will increase over the years, and the NBA will become a sport dominated by the center position. 
+
+**Discussion**
+
+> The broader interpretation of our data is showing how the NBA is transitioning from a "little man league", where the guards dominated using their ability of primeter shot creation and three-point, to a "Big man League". This new league consists of various tall centers and forwards who have the ability to dominate the paint on offense and defense, like in the past, but have now adapted the ability to skillfully handle the ball in transition ad can step out to shoot the three-ball at a high percentage. This is supported by our graphs as centers are leading the charts in defense and offense efficiency in modern day basketball, along with their average 3 point percentage almost doubling over 25 years. 
+
+> For potenital new questions, I might look more closely into how the guard position has changed over the years instead of only focusing on the power foward and center. I could have compared how the offensive and defensive efficency of guards have changed and compared it to the centers to show how they have changed as well. I also could look at recent MVPs as the past four MVPs have been big men and the projected winner for this season in the NBA is once again a center
+
+> Some potential shortcomings were that our offensive and defense efficiencies obviously weren't perfect models of what the player's offense and defense efficiency as I couldn't calculate each individual play and how much each play was valuable to the player's team. Along, with having to eliminate some players who played multiple positions in one season. Overall, I think the analysis still contains enough data over a vast amount of players over twenty five years to consider it to still be strong statistical evidence to suppourt our thesis.
